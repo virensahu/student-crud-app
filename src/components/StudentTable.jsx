@@ -1,133 +1,162 @@
-import React, { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getStudents, deleteStudent } from '../api/studentApi';
+import React, { useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getStudents, deleteStudent, updateStudent } from '../api/studentApi';
+import { Select, MenuItem, Pagination, Checkbox, IconButton } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import { MaterialReactTable } from 'material-react-table';
 
 const StudentTable = ({ onEdit }) => {
   const queryClient = useQueryClient();
+
   const { data: students = [], isLoading, isError } = useQuery({
     queryKey: ['students'],
     queryFn: getStudents,
   });
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const studentsPerPage = 10;
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }) => updateStudent(id, data),
+    onSuccess: () => queryClient.invalidateQueries(['students']),
+  });
 
-  // Sort students by name (ascending)
-  const sortedStudents = [...students].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
+  const deleteMutation = useMutation({
+    mutationFn: deleteStudent,
+    onSuccess: () => queryClient.invalidateQueries(['students']),
+  });
 
-  const totalPages = Math.ceil(sortedStudents.length / studentsPerPage);
-  const indexOfLastStudent = currentPage * studentsPerPage;
-  const indexOfFirstStudent = indexOfLastStudent - studentsPerPage;
-  const currentStudents = sortedStudents.slice(indexOfFirstStudent, indexOfLastStudent);
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [selectedRows, setSelectedRows] = useState([]);
 
-  const handleDelete = async (id) => {
+  const totalPages = Math.ceil(students.length / rowsPerPage);
+  const paginatedStudents = students.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+
+  const allVisibleIds = paginatedStudents.map((s) => s.id);
+  const allSelected = allVisibleIds.every((id) => selectedRows.includes(id));
+
+  const toggleSelectAll = (checked) => {
+    setSelectedRows((prev) =>
+      checked ? [...new Set([...prev, ...allVisibleIds])] : prev.filter((id) => !allVisibleIds.includes(id))
+    );
+  };
+
+  const handleSaveRow = async ({ values, row }) => {
+    const id = row.original.id;
+    await updateMutation.mutateAsync({ id, data: values });
+  };
+
+  const handleDeleteRow = async (row) => {
+    const id = row.original.id;
     if (window.confirm('Are you sure you want to delete this student?')) {
-      await deleteStudent(id);
-      queryClient.invalidateQueries(['students']);
+      await deleteMutation.mutateAsync(id);
     }
   };
 
-  const handlePrev = () => {
-    if (currentPage > 1) setCurrentPage(currentPage - 1);
+  const handleBulkDelete = async () => {
+    if (selectedRows.length === 0) return;
+    if (window.confirm(`Delete ${selectedRows.length} selected students?`)) {
+      await Promise.all(selectedRows.map((id) => deleteMutation.mutateAsync(id)));
+      setSelectedRows([]);
+    }
   };
 
-  const handleNext = () => {
-    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
-  };
-
-  if (isLoading) return <p className="text-center mt-4">Loading...</p>;
-  if (isError) return <p className="text-center mt-4 text-red-500">Error loading students.</p>;
+  const columns = useMemo(() => [
+    {
+      id: 'select',
+      header: (
+        <Checkbox
+          checked={allSelected}
+          onChange={(e) => toggleSelectAll(e.target.checked)}
+        />
+      ),
+      Cell: ({ row }) => (
+        <Checkbox
+          checked={selectedRows.includes(row.original.id)}
+          onChange={(e) => {
+            const id = row.original.id;
+            setSelectedRows((prev) =>
+              e.target.checked ? [...prev, id] : prev.filter((item) => item !== id)
+            );
+          }}
+        />
+      ),
+      enableSorting: false,
+      size: 50,
+    },
+    { accessorKey: 'name', header: 'Name' },
+    { accessorKey: 'age', header: 'Age' },
+    { accessorKey: 'email', header: 'Email' },
+    { accessorKey: 'course', header: 'Course' },
+  ], [selectedRows, allSelected]);
 
   return (
-    <div className="w-full md:w-[80vw] mx-auto mt-10">
-      <table className="w-full bg-white shadow-md rounded-lg overflow-hidden">
-        <thead className="bg-blue-600 text-white">
-          <tr>
-            <th className="px-4 py-2 text-left">SNo.</th>
-            <th className="px-4 py-2 text-left">Name</th>
-            <th className="px-4 py-2 text-left">Age</th>
-            <th className="px-4 py-2 text-left">Email</th>
-            <th className="px-4 py-2 text-left">Course</th>
-            <th className="px-4 py-2 text-left">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {currentStudents.map((student, idx) => (
-            <tr key={student.id} className="border-b hover:bg-gray-100">
-              <td className="px-4 py-2">{indexOfFirstStudent + idx + 1}</td>
-              <td className="px-4 py-2">{student.name}</td>
-              <td className="px-4 py-2">{student.age}</td>
-              <td className="px-4 py-2">{student.email}</td>
-              <td className="px-4 py-2">{student.course}</td>
-              <td className="px-4 py-2 space-x-2">
-                <button
-                  onClick={() => onEdit(student)}
-                  className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 transition"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(student.id)}
-                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition"
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="p-4 md:p-8 bg-white rounded-lg shadow-md">
+      {/* Bulk Delete Button */}
+      <div className="flex justify-between items-center mb-4">
+        <button
+          onClick={handleBulkDelete}
+          disabled={selectedRows.length === 0}
+          className={`flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition ${
+            selectedRows.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+        >
+          <DeleteIcon fontSize="small" />
+          Delete Selected
+        </button>
+      </div>
+
+      <MaterialReactTable
+        columns={columns}
+        data={paginatedStudents}
+        editingMode="row"
+        enableEditing
+        onEditingRowSave={handleSaveRow}
+        enablePagination={false}
+        state={{ isLoading, showAlertBanner: isError }}
+        enableRowActions
+        positionActionsColumn="last"
+        renderRowActions={({ row }) => (
+          <div className="flex gap-2 justify-start">
+            <IconButton onClick={() => onEdit(row.original)} color="primary">
+              <EditIcon />
+            </IconButton>
+            <IconButton onClick={() => handleDeleteRow(row)} color="error">
+              <DeleteIcon />
+            </IconButton>
+          </div>
+        )}
+      />
 
       {/* Pagination Controls */}
-      <div className="flex justify-center items-center mt-4 space-x-2 flex-wrap">
-        <button
-          onClick={handlePrev}
-          disabled={currentPage === 1}
-          className={`px-3 py-1 rounded ${currentPage === 1
-              ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-        >
-          Prev
-        </button>
-
-        {[1, 2, 3].map((page) => (
-          <button
-            key={page}
-            onClick={() => setCurrentPage(page)}
-            className={`px-3 py-1 rounded ${currentPage === page
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 hover:bg-gray-300'
-              }`}
+      <div className="flex flex-col md:flex-row justify-between items-center mt-4 gap-4">
+        <div className="flex items-center gap-2">
+          <span>Rows per page:</span>
+          <Select
+            value={rowsPerPage}
+            onChange={(e) => {
+              setRowsPerPage(e.target.value);
+              setPage(1);
+            }}
+            size="small"
           >
-            {page}
-          </button>
-        ))}
+            {[5, 10, 20, 50].map((size) => (
+              <MenuItem key={size} value={size}>
+                {size}
+              </MenuItem>
+            ))}
+          </Select>
+        </div>
 
-        {currentPage > 3 && (
-          <>
-            <span className="px-2">...</span>
-            <button
-              onClick={() => setCurrentPage(currentPage)}
-              className="px-3 py-1 rounded bg-blue-600 text-white"
-            >
-              {currentPage}
-            </button>
-          </>
-        )}
-
-        <button
-          onClick={handleNext}
-          disabled={currentPage === totalPages || totalPages === 0}
-          className={`px-3 py-1 rounded ${currentPage === totalPages || totalPages === 0
-              ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-        >
-          Next
-        </button>
+        <Pagination
+          count={totalPages}
+          page={page}
+          onChange={(e, value) => setPage(value)}
+          showFirstButton
+          showLastButton
+          siblingCount={1}
+          boundaryCount={1}
+          color="primary"
+        />
       </div>
     </div>
   );
