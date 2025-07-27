@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import StudentForm from '../components/StudentForm';
+import StudentForm from '../components/studentForm';
 import StudentTable from '../components/StudentTable';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
