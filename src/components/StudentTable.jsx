@@ -1,10 +1,41 @@
-import React, { useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getStudents, deleteStudent, updateStudent } from '../api/studentApi';
-import { Select, MenuItem, Pagination, Checkbox, IconButton } from '@mui/material';
+import React, { useMemo, useState, forwardRef } from 'react';
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {
+  getStudents,
+  deleteStudent,
+  updateStudent,
+} from '../api/studentApi';
+import {
+  Select,
+  MenuItem,
+  Pagination,
+  Checkbox,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  Slide,
+  Box,
+} from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { MaterialReactTable } from 'material-react-table';
+import { saveAs } from 'file-saver';
+import * as XLSX from 'xlsx';
+
+
+// Slide transition for dialog
+const Transition = forwardRef(function Transition(props, ref) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
 
 const StudentTable = ({ onEdit }) => {
   const queryClient = useQueryClient();
@@ -27,16 +58,25 @@ const StudentTable = ({ onEdit }) => {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [selectedRows, setSelectedRows] = useState([]);
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState(null);
 
   const totalPages = Math.ceil(students.length / rowsPerPage);
-  const paginatedStudents = students.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const paginatedStudents = students.slice(
+    (page - 1) * rowsPerPage,
+    page * rowsPerPage
+  );
 
   const allVisibleIds = paginatedStudents.map((s) => s.id);
-  const allSelected = allVisibleIds.every((id) => selectedRows.includes(id));
+  const allSelected = allVisibleIds.every((id) =>
+    selectedRows.includes(id)
+  );
 
   const toggleSelectAll = (checked) => {
     setSelectedRows((prev) =>
-      checked ? [...new Set([...prev, ...allVisibleIds])] : prev.filter((id) => !allVisibleIds.includes(id))
+      checked
+        ? [...new Set([...prev, ...allVisibleIds])]
+        : prev.filter((id) => !allVisibleIds.includes(id))
     );
   };
 
@@ -45,66 +85,142 @@ const StudentTable = ({ onEdit }) => {
     await updateMutation.mutateAsync({ id, data: values });
   };
 
-  const handleDeleteRow = async (row) => {
-    const id = row.original.id;
-    if (window.confirm('Are you sure you want to delete this student?')) {
-      await deleteMutation.mutateAsync(id);
+  const handleDeleteRow = (row) => {
+    setStudentToDelete(row.original);
+    setConfirmDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (studentToDelete) {
+      await deleteMutation.mutateAsync(studentToDelete.id);
+      setConfirmDialogOpen(false);
+      setStudentToDelete(null);
     }
   };
 
-  const handleBulkDelete = async () => {
+  const cancelDelete = () => {
+    setConfirmDialogOpen(false);
+    setStudentToDelete(null);
+  };
+
+  const handleBulkDelete = () => {
     if (selectedRows.length === 0) return;
-    if (window.confirm(`Delete ${selectedRows.length} selected students?`)) {
-      await Promise.all(selectedRows.map((id) => deleteMutation.mutateAsync(id)));
+    setStudentToDelete({ id: selectedRows, bulk: true });
+    setConfirmDialogOpen(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    if (studentToDelete?.bulk) {
+      await Promise.all(
+        studentToDelete.id.map((id) => deleteMutation.mutateAsync(id))
+      );
       setSelectedRows([]);
     }
+    setConfirmDialogOpen(false);
+    setStudentToDelete(null);
   };
 
-  const columns = useMemo(() => [
-    {
-      id: 'select',
-      header: (
-        <Checkbox
-          checked={allSelected}
-          onChange={(e) => toggleSelectAll(e.target.checked)}
-        />
-      ),
-      Cell: ({ row }) => (
-        <Checkbox
-          checked={selectedRows.includes(row.original.id)}
-          onChange={(e) => {
-            const id = row.original.id;
-            setSelectedRows((prev) =>
-              e.target.checked ? [...prev, id] : prev.filter((item) => item !== id)
-            );
-          }}
-        />
-      ),
-      enableSorting: false,
-      size: 50,
-    },
-    { accessorKey: 'name', header: 'Name' },
-    { accessorKey: 'age', header: 'Age' },
-    { accessorKey: 'email', header: 'Email' },
-    { accessorKey: 'course', header: 'Course' },
-  ], [selectedRows, allSelected]);
+  const columns = useMemo(
+    () => [
+      {
+        id: 'select',
+        header: (
+          <Checkbox
+            checked={allSelected}
+            onChange={(e) => toggleSelectAll(e.target.checked)}
+          />
+        ),
+        Cell: ({ row }) => (
+          <Checkbox
+            checked={selectedRows.includes(row.original.id)}
+            onChange={(e) => {
+              const id = row.original.id;
+              setSelectedRows((prev) =>
+                e.target.checked
+                  ? [...prev, id]
+                  : prev.filter((item) => item !== id)
+              );
+            }}
+          />
+        ),
+        enableSorting: false,
+        size: 50,
+      },
+      { accessorKey: 'name', header: 'Name' },
+      { accessorKey: 'age', header: 'Age' },
+      { accessorKey: 'email', header: 'Email' },
+      { accessorKey: 'course', header: 'Course' },
+    ],
+    [selectedRows, allSelected]
+  );
 
+  const exportToCSV = () => {
+    const headers = ['Name', 'Age', 'Email', 'Course'];
+    const rows = paginatedStudents.map((student) => [
+      student.name,
+      student.age,
+      student.email,
+      student.course,
+    ]);
+    let csvContent =
+      'data:text/csv;charset=utf-8,' +
+      headers.join(',') +
+      '\n' +
+      rows.map((e) => e.join(',')).join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', 'students.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportToExcel = () => {
+    const worksheet = XLSX.utils.json_to_sheet(paginatedStudents);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Students');
+    const excelBuffer = XLSX.write(workbook, {
+      bookType: 'xlsx',
+      type: 'array',
+    });
+    const data = new Blob([excelBuffer], {
+      type: 'application/octet-stream',
+    });
+    saveAs(data, 'students.xlsx');
+  };
+
+  // UI 
   return (
-    <div className="p-4 md:p-8 bg-white rounded-lg shadow-md">
-      {/* Bulk Delete Button */}
-      <div className="flex justify-between items-center mb-4">
+    <div className="p-4 sm:p-6 md:p-8 bg-red-100 rounded-lg shadow-md mt-10 mb-8 w-full max-w-7xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-2">
+        {/* Export Buttons */}
+        <div className="flex gap-4 mb-4">
+          <button
+            onClick={exportToCSV}
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
+          >
+            Export to CSV
+          </button>
+          <button
+            onClick={exportToExcel}
+            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition"
+          >
+            Export to Excel
+          </button>
+        </div>
+        {/* Bulk Delete Button */}
         <button
           onClick={handleBulkDelete}
           disabled={selectedRows.length === 0}
-          className={`flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition ${
-            selectedRows.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-          }`}
+          className={`flex items-center gap-2 bg-red-700 text-white px-4 py-2 rounded hover:bg-red-1200 transition ${selectedRows.length === 0 ? 'opacity-80 cursor-not-allowed' : ''
+            }`}
         >
           <DeleteIcon fontSize="small" />
           Delete Selected
         </button>
       </div>
-
+      {/* Table */}
       <MaterialReactTable
         columns={columns}
         data={paginatedStudents}
@@ -126,11 +242,10 @@ const StudentTable = ({ onEdit }) => {
           </div>
         )}
       />
-
       {/* Pagination Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-center mt-4 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-center mt-6 gap-4">
         <div className="flex items-center gap-2">
-          <span>Rows per page:</span>
+          <span className="text-sm font-medium">Rows per page:</span>
           <Select
             value={rowsPerPage}
             onChange={(e) => {
@@ -158,6 +273,55 @@ const StudentTable = ({ onEdit }) => {
           color="primary"
         />
       </div>
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={confirmDialogOpen}
+        onClose={cancelDelete}
+        TransitionComponent={Transition}
+        keepMounted
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            padding: 2,
+            backgroundColor: '#fff',
+            boxShadow: 6,
+            minWidth: 400,
+          },
+        }}
+      >
+        <DialogTitle>
+          <Box display="flex" alignItems="center" gap={1}>
+            <WarningAmberIcon color="warning" />
+            <Typography variant="h6" color="text.primary">
+              Confirm Deletion
+            </Typography>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent>
+          <Typography variant="body1" color="text.secondary" mt={1}>
+            {studentToDelete?.bulk
+              ? `Are you sure you want to delete ${studentToDelete.id.length} selected students?`
+              : `Are you sure you want to delete "${studentToDelete?.name}"?`}
+          </Typography>
+        </DialogContent>
+
+        <DialogActions sx={{ mt: 2 }}>
+          <Button onClick={cancelDelete} variant="outlined" color="primary">
+            Cancel
+          </Button>
+          <Button
+            onClick={
+              studentToDelete?.bulk ? confirmBulkDelete : confirmDelete
+            }
+            variant="contained"
+            color="error"
+            startIcon={<DeleteIcon />}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };
