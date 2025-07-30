@@ -1,10 +1,20 @@
 # 🎓 Student Registration CRUD App – React + Vite
 
 
-![App Screenshot](image.png)
-![App Screenshot](image-1.png)
-![App Screenshot](image-2.png)
-![App Screenshot](image-3.png)
+<img width="650" height="400" alt="image" src="https://github.com/user-attachments/assets/294138fa-81dd-4b91-a50a-705009adaad8" /> 
+
+
+<img width="650" height="400" alt="image" src="https://github.com/user-attachments/assets/59a88e48-4c92-402c-8da1-035fbf55f11e" /> 
+
+
+<img width="650" height="400" alt="image" src="https://github.com/user-attachments/assets/05acdec9-9f56-4d76-a03d-3c0d8f594899" />
+
+
+<img width="650" height="400" alt="image" src="https://github.com/user-attachments/assets/30c5111b-26d9-4817-87c4-db8516ffe79c" />
+
+
+
+
 
 
 
@@ -32,6 +42,7 @@ Mock API – JSON Server or MockAPI.io for backend simulation
 
 
 📁 Project Structure
+```
 student-crud-app/
 ├── src/
 │   ├── components/       # Reusable UI components
@@ -43,28 +54,29 @@ student-crud-app/
 ├── .env.example          # Firebase environment variables
 ├── package.json
 └── README.md
-
+```
 
 🔐 Firebase Setup
+```
 This project uses Firebase Authentication. To enable it:
-
 1. Go to Firebase Console and create a new project.
 2. Enable Email/Password authentication under Authentication > Sign-in method.
 3. Create a .env file in the root of your project and add your Firebase config like this:
 
-VITE_FIREBASE_API_KEY=your_api_key_here
-VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain_here
-VITE_FIREBASE_PROJECT_ID=your_project_id_here
-VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket_here
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id_here
-VITE_FIREBASE_APP_ID=your_app_id_here
-VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id_here
+ VITE_FIREBASE_API_KEY=your_api_key_here
+ VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain_here
+ VITE_FIREBASE_PROJECT_ID=your_project_id_here
+ VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket_here
+ VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id_here
+ VITE_FIREBASE_APP_ID=your_app_id_here
+ VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id_here
 
 4. Your Firebase config is loaded in the app using import.meta.env in firebase.js.
-
+``` 
 
 ## 📦 Installation
 
+```bash
 git clone https://github.com/virensahu/student-crud-app
 cd student-crud-app                                       
 npm install
